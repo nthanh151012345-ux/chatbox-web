@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_localizations.dart';
 import 'auth_gate.dart';
 import 'gemini_service.dart';
+import 'user_state_storage.dart';
 
 /// Entry point for the Material 3 career-guidance application.
 class CareerGuidanceApp extends StatefulWidget {
@@ -68,7 +71,7 @@ class _CareerGuidanceAppState extends State<CareerGuidanceApp> {
           ),
           home: widget.requireAuthentication
               ? const AuthGate(signedInChild: MainNavigationScreen())
-              : const MainNavigationScreen(),
+              : const MainNavigationScreen(enablePersistence: false),
         ),
       ),
     );
@@ -77,7 +80,9 @@ class _CareerGuidanceAppState extends State<CareerGuidanceApp> {
 
 /// Owns bottom navigation and routes a question from the home page into chat.
 class MainNavigationScreen extends StatefulWidget {
-  const MainNavigationScreen({super.key});
+  const MainNavigationScreen({super.key, this.enablePersistence = true});
+
+  final bool enablePersistence;
 
   @override
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
@@ -87,8 +92,90 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _selectedTab = 0;
   int _submissionId = 0;
   int _clearHistoryId = 0;
+  int _restoreId = 0;
   String? _pendingQuestion;
   List<CareerMessage> _history = const [];
+  final _storage = UserStateStorage();
+  AppLanguageController? _languageController;
+  String? _userId;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.enablePersistence) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _restoreUserState());
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = AppLanguageScope.controllerOf(context);
+    if (identical(controller, _languageController)) return;
+    _languageController?.removeListener(_saveLanguage);
+    _languageController = controller;
+    _languageController!.addListener(_saveLanguage);
+  }
+
+  @override
+  void dispose() {
+    _languageController?.removeListener(_saveLanguage);
+    super.dispose();
+  }
+
+  Future<void> _restoreUserState() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    _userId = user.id;
+    final savedState = await _storage.read(user.id);
+    if (!mounted) return;
+    if (savedState.language != null) {
+      _languageController?.changeTo(savedState.language!);
+    }
+    setState(() {
+      _history = savedState.messages
+          .map(
+            (message) => CareerMessage(
+              text: message.text,
+              isUser: message.isUser,
+              isError: message.isError,
+              includeInAiHistory: message.includeInAiHistory,
+            ),
+          )
+          .toList(growable: false);
+      _restoreId++;
+    });
+  }
+
+  void _saveLanguage() {
+    final userId = _userId;
+    final controller = _languageController;
+    if (!widget.enablePersistence || userId == null || controller == null) {
+      return;
+    }
+    unawaited(_storage.saveLanguage(userId, controller.language));
+  }
+
+  void _saveHistory(List<CareerMessage> messages) {
+    setState(() => _history = messages);
+    final userId = _userId;
+    if (!widget.enablePersistence || userId == null) return;
+    unawaited(
+      _storage.saveMessages(
+        userId,
+        messages
+            .map(
+              (message) => StoredCareerMessage(
+                text: message.text,
+                isUser: message.isUser,
+                isError: message.isError,
+                includeInAiHistory: message.includeInAiHistory,
+              ),
+            )
+            .toList(growable: false),
+      ),
+    );
+  }
 
   void _startChat(String question) {
     final text = question.trim();
@@ -106,6 +193,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       _pendingQuestion = null;
       _clearHistoryId++;
     });
+    final userId = _userId;
+    if (widget.enablePersistence && userId != null) {
+      unawaited(_storage.saveMessages(userId, const []));
+    }
   }
 
   @override
@@ -117,7 +208,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         question: _pendingQuestion,
         submissionId: _submissionId,
         clearHistoryId: _clearHistoryId,
-        onMessagesChanged: (messages) => setState(() => _history = messages),
+        restoreId: _restoreId,
+        initialMessages: _history,
+        onMessagesChanged: _saveHistory,
       ),
       HistoryScreen(
         messages: _history,
@@ -817,12 +910,16 @@ class CareerChatScreen extends StatefulWidget {
     required this.question,
     required this.submissionId,
     required this.clearHistoryId,
+    required this.restoreId,
+    required this.initialMessages,
     required this.onMessagesChanged,
   });
 
   final String? question;
   final int submissionId;
   final int clearHistoryId;
+  final int restoreId;
+  final List<CareerMessage> initialMessages;
   final ValueChanged<List<CareerMessage>> onMessagesChanged;
 
   @override
@@ -864,6 +961,9 @@ class _CareerChatScreenState extends State<CareerChatScreen> {
     super.didUpdateWidget(oldWidget);
     if (widget.clearHistoryId != oldWidget.clearHistoryId) {
       _clearConversation();
+    }
+    if (widget.restoreId != oldWidget.restoreId) {
+      _restoreConversation(widget.initialMessages);
     }
     if (widget.submissionId != oldWidget.submissionId &&
         widget.question != null) {
@@ -918,6 +1018,28 @@ class _CareerChatScreenState extends State<CareerChatScreen> {
     _notifyHistory();
     _scrollToLatest();
   }
+
+  void _restoreConversation(List<CareerMessage> messages) {
+    _requestId++;
+    _controller.clear();
+    setState(() {
+      _isWaiting = false;
+      _messages
+        ..clear()
+        ..addAll(messages.isEmpty ? [_welcomeMessage()] : messages);
+    });
+    _notifyHistory();
+    _scrollToLatest();
+  }
+
+  CareerMessage _welcomeMessage() => CareerMessage(
+    text: context.strings.t(
+      'Chào bạn 👋 Mình là trợ lý hướng nghiệp. Bạn đang băn khoăn điều gì?',
+      'Hello 👋 I am your career guidance assistant. What are you wondering about?',
+    ),
+    isUser: false,
+    includeInAiHistory: false,
+  );
 
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty || _isWaiting) return;

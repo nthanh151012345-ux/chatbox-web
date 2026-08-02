@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:chatbox/app_localizations.dart';
 import 'package:chatbox/career_counselor.dart';
 import 'package:chatbox/home_screen.dart';
+import 'package:chatbox/user_state_storage.dart';
 
 void main() {
   testWidgets('renders the career-guidance home screen', (
@@ -62,6 +64,28 @@ void main() {
     expect(careerCounselorSystemPrompt, contains('tối đa 120 từ'));
     expect(careerCounselorSystemPrompt, contains('MỘT câu quan trọng nhất'));
     expect(careerCounselorSystemPrompt, contains('tối đa 3 ngành'));
+  });
+
+  test('keeps language and conversation separately for each account', () async {
+    SharedPreferences.setMockInitialValues({});
+    final storage = UserStateStorage();
+    await storage.saveLanguage('student-a', AppLanguage.english);
+    await storage.saveMessages('student-a', const [
+      StoredCareerMessage(
+        text: 'Em hợp ngành nào?',
+        isUser: true,
+        isError: false,
+        includeInAiHistory: true,
+      ),
+    ]);
+
+    final savedState = await storage.read('student-a');
+    final otherAccount = await storage.read('student-b');
+
+    expect(savedState.language, AppLanguage.english);
+    expect(savedState.messages.single.text, 'Em hợp ngành nào?');
+    expect(otherAccount.language, isNull);
+    expect(otherAccount.messages, isEmpty);
   });
 
   testWidgets('returns to home when exiting the AI chat tab', (
