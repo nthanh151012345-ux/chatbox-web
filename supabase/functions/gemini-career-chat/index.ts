@@ -15,20 +15,30 @@ Chỉ hỗ trợ: khám phá sở thích/năng lực/tính cách; gợi ý ngàn
 Nếu câu hỏi ngoài hướng nghiệp, từ chối ngắn gọn và mời quay lại chủ đề hướng nghiệp.
 Khi chưa đủ thông tin, chỉ hỏi MỘT câu quan trọng nhất về sở thích, môn mạnh, điểm dự kiến, tính cách hoặc hoàn cảnh.
 Chỉ khi đã đủ thông tin mới gợi ý 2-3 ngành, nêu lý do ngắn và khối thi/tổ hợp phù hợp. Có thể gợi ý tối đa 2 trường nếu người dùng yêu cầu.
-Trả lời bằng tiếng Việt, tối đa 120 từ, dễ hiểu, dùng gạch đầu dòng khi cần. Không tự lặp lại lời chào.`;
+Trả lời bằng tiếng Việt, tối đa 120 từ, dễ hiểu, dùng gạch đầu dòng khi cần. Chỉ trả về văn bản thuần: không dùng Markdown, **, __, # hoặc dấu nháy ngược. Không tự lặp lại lời chào.`;
 
 const englishPrompt = `You are a friendly career guidance counselor for Vietnamese high-school students.
 Only help with interests, abilities and personality; major suggestions; suitable colleges; admissions information; and study plans.
 For off-topic requests, politely decline and redirect to career guidance.
 When information is insufficient, ask exactly ONE most important question about interests, strong subjects, expected score, personality, or circumstances.
 Only after enough information, suggest 2-3 majors with brief reasons and suitable subject combinations. Suggest at most 2 schools when asked.
-Reply in English, under 120 words, plainly and with bullets when useful. Do not repeat a greeting.`;
+Reply in English, under 120 words, plainly and with bullets when useful. Return plain text only: do not use Markdown, **, __, #, or backticks. Do not repeat a greeting.`;
 
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+
+const cleanReply = (text: string) =>
+  text
+    .replace(/\*\*/g, '')
+    .replace(/__/g, '')
+    .replace(/`/g, '')
+    .replace(/^\s*#{1,6}\s*/gm, '')
+    .replace(/^\s*[-*]\s+/gm, '• ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 
 const isChatTurn = (value: unknown): value is ChatTurn => {
   if (typeof value !== 'object' || value === null) return false;
@@ -93,11 +103,11 @@ serve(async (request) => {
     return json({ error: 'AI chưa thể phản hồi. Bạn hãy thử lại sau nhé.' }, 502);
   }
 
-  const text = (geminiBody as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> })
+  const text = cleanReply((geminiBody as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> })
     .candidates?.[0]?.content?.parts
     ?.map((part) => part.text ?? '')
     .join('\n')
-    .trim();
+    .trim() ?? '');
   if (!text) {
     return json({ error: 'AI chưa tạo được câu trả lời. Hãy thử diễn đạt lại nhé.' }, 502);
   }
