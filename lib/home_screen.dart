@@ -119,7 +119,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         clearHistoryId: _clearHistoryId,
         onMessagesChanged: (messages) => setState(() => _history = messages),
       ),
-      HistoryScreen(messages: _history, onClearHistory: _clearHistory),
+      HistoryScreen(
+        messages: _history,
+        onClearHistory: _clearHistory,
+        onContinueConversation: () => setState(() => _selectedTab = 1),
+      ),
       const ProfileScreen(),
     ];
 
@@ -1159,10 +1163,12 @@ class HistoryScreen extends StatelessWidget {
     super.key,
     required this.messages,
     required this.onClearHistory,
+    required this.onContinueConversation,
   });
 
   final List<CareerMessage> messages;
   final VoidCallback onClearHistory;
+  final VoidCallback onContinueConversation;
 
   Future<void> _confirmClear(BuildContext context) async {
     final s = context.strings;
@@ -1229,6 +1235,7 @@ class HistoryScreen extends StatelessWidget {
         }
         final message = userMessages[index - 1];
         return ListTile(
+          onTap: onContinueConversation,
           tileColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),

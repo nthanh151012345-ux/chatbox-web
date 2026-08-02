@@ -113,6 +113,7 @@ void main() {
                 CareerMessage(text: 'Em hợp ngành nào?', isUser: true),
               ],
               onClearHistory: () => didClearHistory = true,
+              onContinueConversation: () {},
             ),
           ),
         ),
@@ -126,5 +127,31 @@ void main() {
     await tester.tap(find.text('Xóa'));
     await tester.pumpAndSettle();
     expect(didClearHistory, isTrue);
+  });
+
+  testWidgets('opens the active chat when a history item is tapped', (
+    WidgetTester tester,
+  ) async {
+    var didContinueConversation = false;
+    final languageController = AppLanguageController();
+    await tester.pumpWidget(
+      AppLanguageScope(
+        controller: languageController,
+        child: MaterialApp(
+          home: Scaffold(
+            body: HistoryScreen(
+              messages: const [
+                CareerMessage(text: 'Em hợp ngành nào?', isUser: true),
+              ],
+              onClearHistory: () {},
+              onContinueConversation: () => didContinueConversation = true,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Em hợp ngành nào?'));
+    expect(didContinueConversation, isTrue);
   });
 }
