@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_localizations.dart';
+import 'chat_appearance.dart';
 
 class StoredCareerMessage {
   const StoredCareerMessage({
@@ -41,10 +42,15 @@ class StoredCareerMessage {
 }
 
 class StoredUserState {
-  const StoredUserState({required this.language, required this.messages});
+  const StoredUserState({
+    required this.language,
+    required this.messages,
+    required this.chatAppearance,
+  });
 
   final AppLanguage? language;
   final List<StoredCareerMessage> messages;
+  final ChatAppearance chatAppearance;
 }
 
 /// Keeps non-sensitive UI state locally and scopes it to the signed-in user.
@@ -58,15 +64,26 @@ class UserStateStorage {
       'vi' => AppLanguage.vietnamese,
       _ => null,
     };
+    final chatAppearance = ChatAppearance.fromStorageValue(
+      preferences.getString(_appearanceKey(userId)),
+    );
     final encodedMessages = preferences.getString(_messagesKey(userId));
     if (encodedMessages == null) {
-      return StoredUserState(language: language, messages: const []);
+      return StoredUserState(
+        language: language,
+        messages: const [],
+        chatAppearance: chatAppearance,
+      );
     }
 
     try {
       final decoded = jsonDecode(encodedMessages);
       if (decoded is! List) {
-        return StoredUserState(language: language, messages: const []);
+        return StoredUserState(
+          language: language,
+          messages: const [],
+          chatAppearance: chatAppearance,
+        );
       }
       return StoredUserState(
         language: language,
@@ -74,9 +91,14 @@ class UserStateStorage {
             .map(StoredCareerMessage.fromJson)
             .whereType<StoredCareerMessage>()
             .toList(growable: false),
+        chatAppearance: chatAppearance,
       );
     } on FormatException {
-      return StoredUserState(language: language, messages: const []);
+      return StoredUserState(
+        language: language,
+        messages: const [],
+        chatAppearance: chatAppearance,
+      );
     }
   }
 
@@ -99,6 +121,18 @@ class UserStateStorage {
     );
   }
 
+  Future<void> saveChatAppearance(
+    String userId,
+    ChatAppearance appearance,
+  ) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _appearanceKey(userId),
+      appearance.toStorageValue(),
+    );
+  }
+
   String _languageKey(String userId) => '$_prefix.language.$userId';
   String _messagesKey(String userId) => '$_prefix.messages.$userId';
+  String _appearanceKey(String userId) => '$_prefix.appearance.$userId';
 }

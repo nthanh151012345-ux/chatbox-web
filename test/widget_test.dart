@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:chatbox/app_localizations.dart';
 import 'package:chatbox/career_counselor.dart';
+import 'package:chatbox/chat_appearance.dart';
 import 'package:chatbox/home_screen.dart';
 import 'package:chatbox/user_state_storage.dart';
 
@@ -78,12 +79,23 @@ void main() {
         includeInAiHistory: true,
       ),
     ]);
+    await storage.saveChatAppearance(
+      'student-a',
+      const ChatAppearance(
+        brightness: ChatBrightness.dark,
+        colorTheme: ChatColorTheme.violet,
+        fontSize: ChatFontSize.large,
+      ),
+    );
 
     final savedState = await storage.read('student-a');
     final otherAccount = await storage.read('student-b');
 
     expect(savedState.language, AppLanguage.english);
     expect(savedState.messages.single.text, 'Em hợp ngành nào?');
+    expect(savedState.chatAppearance.brightness, ChatBrightness.dark);
+    expect(savedState.chatAppearance.colorTheme, ChatColorTheme.violet);
+    expect(savedState.chatAppearance.fontSize, ChatFontSize.large);
     expect(otherAccount.language, isNull);
     expect(otherAccount.messages, isEmpty);
   });
@@ -113,7 +125,13 @@ void main() {
 
     await tester.tap(find.text('Cá nhân'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Ngôn ngữ'));
+    final languageItem = find.text('Ngôn ngữ');
+    await tester.scrollUntilVisible(
+      languageItem,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(languageItem);
     await tester.pumpAndSettle();
     await tester.tap(find.text('English'));
     await tester.pumpAndSettle();

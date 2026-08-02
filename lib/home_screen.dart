@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_localizations.dart';
 import 'auth_gate.dart';
+import 'chat_appearance.dart';
 import 'gemini_service.dart';
 import 'user_state_storage.dart';
 
@@ -98,6 +99,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   final _storage = UserStateStorage();
   AppLanguageController? _languageController;
   String? _userId;
+  ChatAppearance _chatAppearance = const ChatAppearance();
 
   @override
   void initState() {
@@ -143,6 +145,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ),
           )
           .toList(growable: false);
+      _chatAppearance = savedState.chatAppearance;
       _restoreId++;
     });
   }
@@ -175,6 +178,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             .toList(growable: false),
       ),
     );
+  }
+
+  void _changeChatAppearance(ChatAppearance appearance) {
+    setState(() => _chatAppearance = appearance);
+    final userId = _userId;
+    if (widget.enablePersistence && userId != null) {
+      unawaited(_storage.saveChatAppearance(userId, appearance));
+    }
   }
 
   void _startChat(String question) {
@@ -210,6 +221,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         clearHistoryId: _clearHistoryId,
         restoreId: _restoreId,
         initialMessages: _history,
+        appearance: _chatAppearance,
         onMessagesChanged: _saveHistory,
       ),
       HistoryScreen(
@@ -217,7 +229,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         onClearHistory: _clearHistory,
         onContinueConversation: () => setState(() => _selectedTab = 1),
       ),
-      const ProfileScreen(),
+      ProfileScreen(
+        appearance: _chatAppearance,
+        onAppearanceChanged: _changeChatAppearance,
+      ),
     ];
 
     return Scaffold(
@@ -912,6 +927,7 @@ class CareerChatScreen extends StatefulWidget {
     required this.clearHistoryId,
     required this.restoreId,
     required this.initialMessages,
+    required this.appearance,
     required this.onMessagesChanged,
   });
 
@@ -920,6 +936,7 @@ class CareerChatScreen extends StatefulWidget {
   final int clearHistoryId;
   final int restoreId;
   final List<CareerMessage> initialMessages;
+  final ChatAppearance appearance;
   final ValueChanged<List<CareerMessage>> onMessagesChanged;
 
   @override
@@ -1115,6 +1132,7 @@ class _CareerChatScreenState extends State<CareerChatScreen> {
   @override
   Widget build(BuildContext context) {
     final s = context.strings;
+    final appearance = widget.appearance;
     return Column(
       children: [
         Padding(
@@ -1123,23 +1141,34 @@ class _CareerChatScreenState extends State<CareerChatScreen> {
             alignment: Alignment.centerLeft,
             child: Text(
               s.t('Trò chuyện cùng AI', 'Chat with AI'),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: appearance.botText,
+              ),
             ),
           ),
         ),
         Expanded(
-          child: ListView(
-            controller: _scrollController,
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-            children: [
-              ..._messages.map((message) => _ChatBubble(message: message)),
-              if (_isWaiting) const _TypingBubble(),
-            ],
+          child: ColoredBox(
+            color: appearance.background,
+            child: ListView(
+              controller: _scrollController,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+              children: [
+                ..._messages.map(
+                  (message) =>
+                      _ChatBubble(message: message, appearance: appearance),
+                ),
+                if (_isWaiting) _TypingBubble(appearance: appearance),
+              ],
+            ),
           ),
         ),
         _ChatComposer(
           controller: _controller,
           isWaiting: _isWaiting,
+          appearance: appearance,
           onSend: _sendFromInput,
         ),
       ],
@@ -1148,22 +1177,23 @@ class _CareerChatScreenState extends State<CareerChatScreen> {
 }
 
 class _ChatBubble extends StatelessWidget {
-  const _ChatBubble({required this.message});
+  const _ChatBubble({required this.message, required this.appearance});
 
   final CareerMessage message;
+  final ChatAppearance appearance;
 
   @override
   Widget build(BuildContext context) {
     final color = message.isUser
-        ? CareerGuidanceApp.primaryBlue
+        ? appearance.accent
         : message.isError
         ? const Color(0xFFFFF1F2)
-        : Colors.white;
+        : appearance.botBubble;
     final textColor = message.isUser
         ? Colors.white
         : message.isError
         ? const Color(0xFFBE123C)
-        : const Color(0xFF1E293B);
+        : appearance.botText;
     return Align(
       alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -1178,13 +1208,15 @@ class _ChatBubble extends StatelessWidget {
             bottomLeft: Radius.circular(message.isUser ? 18 : 4),
             bottomRight: Radius.circular(message.isUser ? 4 : 18),
           ),
-          border: message.isUser
-              ? null
-              : Border.all(color: const Color(0xFFE2E8F0)),
+          border: message.isUser ? null : Border.all(color: appearance.border),
         ),
         child: Text(
           message.text,
-          style: TextStyle(color: textColor, height: 1.45),
+          style: TextStyle(
+            color: textColor,
+            height: 1.45,
+            fontSize: appearance.messageFontSize,
+          ),
         ),
       ),
     );
@@ -1192,7 +1224,9 @@ class _ChatBubble extends StatelessWidget {
 }
 
 class _TypingBubble extends StatelessWidget {
-  const _TypingBubble();
+  const _TypingBubble({required this.appearance});
+
+  final ChatAppearance appearance;
 
   @override
   Widget build(BuildContext context) {
@@ -1203,13 +1237,22 @@ class _TypingBubble extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(
+            SizedBox(
               width: 16,
               height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: appearance.accent,
+              ),
             ),
             const SizedBox(width: 8),
-            Text(context.strings.t('AI đang suy nghĩ…', 'AI is thinking…')),
+            Text(
+              context.strings.t('AI đang suy nghĩ…', 'AI is thinking…'),
+              style: TextStyle(
+                color: appearance.mutedText,
+                fontSize: appearance.messageFontSize,
+              ),
+            ),
           ],
         ),
       ),
@@ -1221,11 +1264,13 @@ class _ChatComposer extends StatelessWidget {
   const _ChatComposer({
     required this.controller,
     required this.isWaiting,
+    required this.appearance,
     required this.onSend,
   });
 
   final TextEditingController controller;
   final bool isWaiting;
+  final ChatAppearance appearance;
   final VoidCallback onSend;
 
   @override
@@ -1233,9 +1278,9 @@ class _ChatComposer extends StatelessWidget {
     final s = context.strings;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+      decoration: BoxDecoration(
+        color: appearance.composer,
+        border: Border(top: BorderSide(color: appearance.border)),
       ),
       child: Row(
         children: [
@@ -1245,8 +1290,15 @@ class _ChatComposer extends StatelessWidget {
               enabled: !isWaiting,
               onSubmitted: isWaiting ? null : (_) => onSend(),
               textInputAction: TextInputAction.send,
+              style: TextStyle(
+                color: appearance.inputText,
+                fontSize: appearance.messageFontSize,
+              ),
               decoration: InputDecoration(
+                filled: true,
+                fillColor: appearance.inputFill,
                 hintText: s.t('Nhập câu hỏi của bạn…', 'Type your question…'),
+                hintStyle: TextStyle(color: appearance.mutedText),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 14,
                   vertical: 12,
@@ -1258,7 +1310,7 @@ class _ChatComposer extends StatelessWidget {
           FilledButton(
             onPressed: isWaiting ? null : onSend,
             style: FilledButton.styleFrom(
-              backgroundColor: CareerGuidanceApp.primaryBlue,
+              backgroundColor: appearance.accent,
               minimumSize: const Size(52, 50),
               padding: EdgeInsets.zero,
             ),
@@ -1379,7 +1431,14 @@ class HistoryScreen extends StatelessWidget {
 }
 
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({
+    super.key,
+    required this.appearance,
+    required this.onAppearanceChanged,
+  });
+
+  final ChatAppearance appearance;
+  final ValueChanged<ChatAppearance> onAppearanceChanged;
 
   Future<void> _signOut(BuildContext context) async {
     final s = context.strings;
@@ -1450,6 +1509,27 @@ class ProfileScreen extends StatelessWidget {
         ),
         Card(
           child: ListTile(
+            leading: Icon(Icons.tune_rounded, color: appearance.accent),
+            title: Text(s.t('Giao diện nhắn tin', 'Chat appearance')),
+            subtitle: Text(
+              s.t(
+                'Màu sắc, cỡ chữ và sáng/tối',
+                'Color, text size and light/dark',
+              ),
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => ChatAppearanceScreen(
+                  appearance: appearance,
+                  onChanged: onAppearanceChanged,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Card(
+          child: ListTile(
             leading: const Icon(
               Icons.language_rounded,
               color: CareerGuidanceApp.primaryBlue,
@@ -1508,6 +1588,199 @@ class ProfileScreen extends StatelessWidget {
       ],
     );
   }
+}
+
+class ChatAppearanceScreen extends StatelessWidget {
+  const ChatAppearanceScreen({
+    super.key,
+    required this.appearance,
+    required this.onChanged,
+  });
+
+  final ChatAppearance appearance;
+  final ValueChanged<ChatAppearance> onChanged;
+
+  String _brightnessLabel(BuildContext context, ChatBrightness value) =>
+      switch (value) {
+        ChatBrightness.light => context.strings.t('Sáng', 'Light'),
+        ChatBrightness.dark => context.strings.t('Tối', 'Dark'),
+      };
+
+  String _themeLabel(BuildContext context, ChatColorTheme value) =>
+      switch (value) {
+        ChatColorTheme.blue => context.strings.t('Xanh dương', 'Blue'),
+        ChatColorTheme.violet => context.strings.t('Tím', 'Violet'),
+        ChatColorTheme.emerald => context.strings.t('Xanh lá', 'Green'),
+      };
+
+  String _fontLabel(BuildContext context, ChatFontSize value) =>
+      switch (value) {
+        ChatFontSize.compact => context.strings.t('Nhỏ', 'Small'),
+        ChatFontSize.standard => context.strings.t('Vừa', 'Medium'),
+        ChatFontSize.large => context.strings.t('Lớn', 'Large'),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.strings;
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: s.t('Thoát', 'Close'),
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.close_rounded),
+        ),
+        title: Text(s.t('Giao diện nhắn tin', 'Chat appearance')),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          _AppearancePreview(appearance: appearance),
+          const SizedBox(height: 24),
+          Text(
+            s.t('Chế độ', 'Mode'),
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          SegmentedButton<ChatBrightness>(
+            segments: ChatBrightness.values
+                .map(
+                  (value) => ButtonSegment(
+                    value: value,
+                    label: Text(_brightnessLabel(context, value)),
+                    icon: Icon(
+                      value == ChatBrightness.light
+                          ? Icons.light_mode_rounded
+                          : Icons.dark_mode_rounded,
+                    ),
+                  ),
+                )
+                .toList(),
+            selected: {appearance.brightness},
+            onSelectionChanged: (values) =>
+                onChanged(appearance.copyWith(brightness: values.first)),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            s.t('Màu tin nhắn', 'Chat color'),
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: ChatColorTheme.values
+                .map(
+                  (value) => ChoiceChip(
+                    label: Text(_themeLabel(context, value)),
+                    selected: appearance.colorTheme == value,
+                    selectedColor: ChatAppearance(
+                      colorTheme: value,
+                    ).accent.withValues(alpha: .18),
+                    onSelected: (_) =>
+                        onChanged(appearance.copyWith(colorTheme: value)),
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            s.t('Cỡ chữ', 'Text size'),
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          SegmentedButton<ChatFontSize>(
+            segments: ChatFontSize.values
+                .map(
+                  (value) => ButtonSegment(
+                    value: value,
+                    label: Text(_fontLabel(context, value)),
+                  ),
+                )
+                .toList(),
+            selected: {appearance.fontSize},
+            onSelectionChanged: (values) =>
+                onChanged(appearance.copyWith(fontSize: values.first)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AppearancePreview extends StatelessWidget {
+  const _AppearancePreview({required this.appearance});
+
+  final ChatAppearance appearance;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: appearance.background,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: appearance.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: _PreviewBubble(
+              text: context.strings.t(
+                'Em hợp ngành nào?',
+                'Which major fits me?',
+              ),
+              color: appearance.accent,
+              textColor: Colors.white,
+              appearance: appearance,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _PreviewBubble(
+              text: context.strings.t(
+                'Mình sẽ hỏi vài điều nhé.',
+                'I will ask a few questions.',
+              ),
+              color: appearance.botBubble,
+              textColor: appearance.botText,
+              appearance: appearance,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreviewBubble extends StatelessWidget {
+  const _PreviewBubble({
+    required this.text,
+    required this.color,
+    required this.textColor,
+    required this.appearance,
+  });
+
+  final String text;
+  final Color color;
+  final Color textColor;
+  final ChatAppearance appearance;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(color: textColor, fontSize: appearance.messageFontSize),
+    ),
+  );
 }
 
 class _ProfileItem extends StatelessWidget {

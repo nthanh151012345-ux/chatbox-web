@@ -39,3 +39,7 @@ _Avoid_: lịch học cứng nhắc, cam kết trúng tuyển
 **Ngôn ngữ hiển thị**:
 Ngôn ngữ mà học sinh chọn để xem giao diện và nhận phản hồi tư vấn từ hệ thống.
 _Avoid_: ngôn ngữ thiết bị, ngôn ngữ lập trình
+
+**Giao diện nhắn tin cá nhân hóa**:
+Tập hợp lựa chọn hiển thị của một học sinh cho màn hình Chat, gồm chế độ sáng/tối, bảng màu tin nhắn và cỡ chữ.
+_Avoid_: giao diện toàn ứng dụng, chủ đề hệ điều hành
