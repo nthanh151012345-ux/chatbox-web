@@ -196,4 +196,30 @@ void main() {
     await tester.tap(find.text('Em hợp ngành nào?'));
     expect(didContinueConversation, isTrue);
   });
+
+  testWidgets('updates chat appearance choices in one settings session', (
+    WidgetTester tester,
+  ) async {
+    ChatAppearance? selectedAppearance;
+    final languageController = AppLanguageController();
+    await tester.pumpWidget(
+      AppLanguageScope(
+        controller: languageController,
+        child: MaterialApp(
+          home: ChatAppearanceScreen(
+            appearance: const ChatAppearance(),
+            onChanged: (appearance) => selectedAppearance = appearance,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Tối'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Xanh lá'));
+    await tester.pumpAndSettle();
+
+    expect(selectedAppearance?.brightness, ChatBrightness.dark);
+    expect(selectedAppearance?.colorTheme, ChatColorTheme.emerald);
+  });
 }

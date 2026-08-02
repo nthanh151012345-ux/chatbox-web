@@ -1590,7 +1590,7 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-class ChatAppearanceScreen extends StatelessWidget {
+class ChatAppearanceScreen extends StatefulWidget {
   const ChatAppearanceScreen({
     super.key,
     required this.appearance,
@@ -1599,6 +1599,24 @@ class ChatAppearanceScreen extends StatelessWidget {
 
   final ChatAppearance appearance;
   final ValueChanged<ChatAppearance> onChanged;
+
+  @override
+  State<ChatAppearanceScreen> createState() => _ChatAppearanceScreenState();
+}
+
+class _ChatAppearanceScreenState extends State<ChatAppearanceScreen> {
+  late ChatAppearance _appearance;
+
+  @override
+  void initState() {
+    super.initState();
+    _appearance = widget.appearance;
+  }
+
+  void _updateAppearance(ChatAppearance appearance) {
+    setState(() => _appearance = appearance);
+    widget.onChanged(appearance);
+  }
 
   String _brightnessLabel(BuildContext context, ChatBrightness value) =>
       switch (value) {
@@ -1623,6 +1641,7 @@ class ChatAppearanceScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.strings;
+    final appearance = _appearance;
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -1657,8 +1676,9 @@ class ChatAppearanceScreen extends StatelessWidget {
                 )
                 .toList(),
             selected: {appearance.brightness},
-            onSelectionChanged: (values) =>
-                onChanged(appearance.copyWith(brightness: values.first)),
+            onSelectionChanged: (values) => _updateAppearance(
+              appearance.copyWith(brightness: values.first),
+            ),
           ),
           const SizedBox(height: 24),
           Text(
@@ -1677,8 +1697,9 @@ class ChatAppearanceScreen extends StatelessWidget {
                     selectedColor: ChatAppearance(
                       colorTheme: value,
                     ).accent.withValues(alpha: .18),
-                    onSelected: (_) =>
-                        onChanged(appearance.copyWith(colorTheme: value)),
+                    onSelected: (_) => _updateAppearance(
+                      appearance.copyWith(colorTheme: value),
+                    ),
                   ),
                 )
                 .toList(),
@@ -1700,7 +1721,7 @@ class ChatAppearanceScreen extends StatelessWidget {
                 .toList(),
             selected: {appearance.fontSize},
             onSelectionChanged: (values) =>
-                onChanged(appearance.copyWith(fontSize: values.first)),
+                _updateAppearance(appearance.copyWith(fontSize: values.first)),
           ),
         ],
       ),
