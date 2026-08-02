@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_localizations.dart';
+import 'avatar_models.dart';
 import 'chat_appearance.dart';
 
 class StoredCareerMessage {
@@ -46,11 +47,15 @@ class StoredUserState {
     required this.language,
     required this.messages,
     required this.chatAppearance,
+    required this.avatarBase64,
+    required this.aiAvatar,
   });
 
   final AppLanguage? language;
   final List<StoredCareerMessage> messages;
   final ChatAppearance chatAppearance;
+  final String? avatarBase64;
+  final AiAvatarId aiAvatar;
 }
 
 /// Keeps non-sensitive UI state locally and scopes it to the signed-in user.
@@ -67,12 +72,18 @@ class UserStateStorage {
     final chatAppearance = ChatAppearance.fromStorageValue(
       preferences.getString(_appearanceKey(userId)),
     );
+    final avatarBase64 = preferences.getString(_avatarKey(userId));
+    final aiAvatar = aiAvatarFromStorage(
+      preferences.getString(_aiAvatarKey(userId)),
+    );
     final encodedMessages = preferences.getString(_messagesKey(userId));
     if (encodedMessages == null) {
       return StoredUserState(
         language: language,
         messages: const [],
         chatAppearance: chatAppearance,
+        avatarBase64: avatarBase64,
+        aiAvatar: aiAvatar,
       );
     }
 
@@ -83,6 +94,8 @@ class UserStateStorage {
           language: language,
           messages: const [],
           chatAppearance: chatAppearance,
+          avatarBase64: avatarBase64,
+          aiAvatar: aiAvatar,
         );
       }
       return StoredUserState(
@@ -92,12 +105,16 @@ class UserStateStorage {
             .whereType<StoredCareerMessage>()
             .toList(growable: false),
         chatAppearance: chatAppearance,
+        avatarBase64: avatarBase64,
+        aiAvatar: aiAvatar,
       );
     } on FormatException {
       return StoredUserState(
         language: language,
         messages: const [],
         chatAppearance: chatAppearance,
+        avatarBase64: avatarBase64,
+        aiAvatar: aiAvatar,
       );
     }
   }
@@ -132,7 +149,23 @@ class UserStateStorage {
     );
   }
 
+  Future<void> saveAvatar(String userId, String? avatarBase64) async {
+    final preferences = await SharedPreferences.getInstance();
+    if (avatarBase64 == null) {
+      await preferences.remove(_avatarKey(userId));
+      return;
+    }
+    await preferences.setString(_avatarKey(userId), avatarBase64);
+  }
+
+  Future<void> saveAiAvatar(String userId, AiAvatarId avatar) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_aiAvatarKey(userId), avatar.name);
+  }
+
   String _languageKey(String userId) => '$_prefix.language.$userId';
   String _messagesKey(String userId) => '$_prefix.messages.$userId';
   String _appearanceKey(String userId) => '$_prefix.appearance.$userId';
+  String _avatarKey(String userId) => '$_prefix.avatar.$userId';
+  String _aiAvatarKey(String userId) => '$_prefix.ai-avatar.$userId';
 }

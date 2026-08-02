@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:chatbox/app_localizations.dart';
+import 'package:chatbox/avatar_models.dart';
 import 'package:chatbox/career_counselor.dart';
 import 'package:chatbox/chat_appearance.dart';
 import 'package:chatbox/home_screen.dart';
@@ -87,6 +88,8 @@ void main() {
         fontSize: ChatFontSize.large,
       ),
     );
+    await storage.saveAvatar('student-a', 'ZmFrZS1hdmF0YXI=');
+    await storage.saveAiAvatar('student-a', AiAvatarId.compass);
 
     final savedState = await storage.read('student-a');
     final otherAccount = await storage.read('student-b');
@@ -96,6 +99,8 @@ void main() {
     expect(savedState.chatAppearance.brightness, ChatBrightness.dark);
     expect(savedState.chatAppearance.colorTheme, ChatColorTheme.violet);
     expect(savedState.chatAppearance.fontSize, ChatFontSize.large);
+    expect(savedState.avatarBase64, 'ZmFrZS1hdmF0YXI=');
+    expect(savedState.aiAvatar, AiAvatarId.compass);
     expect(otherAccount.language, isNull);
     expect(otherAccount.messages, isEmpty);
   });

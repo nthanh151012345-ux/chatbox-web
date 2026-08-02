@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_localizations.dart';
+import 'avatar_models.dart';
 import 'auth_gate.dart';
 import 'chat_appearance.dart';
 import 'gemini_service.dart';
@@ -100,6 +103,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   AppLanguageController? _languageController;
   String? _userId;
   ChatAppearance _chatAppearance = const ChatAppearance();
+  String? _avatarBase64;
+  AiAvatarId _aiAvatar = AiAvatarId.robot;
 
   @override
   void initState() {
@@ -146,6 +151,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           )
           .toList(growable: false);
       _chatAppearance = savedState.chatAppearance;
+      _avatarBase64 = savedState.avatarBase64;
+      _aiAvatar = savedState.aiAvatar;
       _restoreId++;
     });
   }
@@ -188,6 +195,22 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     }
   }
 
+  void _changeAvatar(String? avatarBase64) {
+    setState(() => _avatarBase64 = avatarBase64);
+    final userId = _userId;
+    if (widget.enablePersistence && userId != null) {
+      unawaited(_storage.saveAvatar(userId, avatarBase64));
+    }
+  }
+
+  void _changeAiAvatar(AiAvatarId avatar) {
+    setState(() => _aiAvatar = avatar);
+    final userId = _userId;
+    if (widget.enablePersistence && userId != null) {
+      unawaited(_storage.saveAiAvatar(userId, avatar));
+    }
+  }
+
   void _startChat(String question) {
     final text = question.trim();
     if (text.isEmpty) return;
@@ -222,6 +245,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         restoreId: _restoreId,
         initialMessages: _history,
         appearance: _chatAppearance,
+        aiAvatar: _aiAvatar,
         onMessagesChanged: _saveHistory,
       ),
       HistoryScreen(
@@ -232,6 +256,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ProfileScreen(
         appearance: _chatAppearance,
         onAppearanceChanged: _changeChatAppearance,
+        avatarBase64: _avatarBase64,
+        onAvatarChanged: _changeAvatar,
+        aiAvatar: _aiAvatar,
+        onAiAvatarChanged: _changeAiAvatar,
       ),
     ];
 
@@ -239,6 +267,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       appBar: _CareerAppBar(
         showExit: _selectedTab == 1,
         onExit: () => setState(() => _selectedTab = 0),
+        avatarBase64: _avatarBase64,
       ),
       body: IndexedStack(index: _selectedTab, children: pages),
       bottomNavigationBar: NavigationBar(
@@ -273,10 +302,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
 /// App bar shared by every tab.
 class _CareerAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const _CareerAppBar({required this.showExit, required this.onExit});
+  const _CareerAppBar({
+    required this.showExit,
+    required this.onExit,
+    required this.avatarBase64,
+  });
 
   final bool showExit;
   final VoidCallback onExit;
+  final String? avatarBase64;
 
   @override
   Size get preferredSize => const Size.fromHeight(68);
@@ -313,20 +347,32 @@ class _CareerAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
         ],
       ),
-      actions: const [
+      actions: [
         Padding(
-          padding: EdgeInsets.only(right: 20),
+          padding: const EdgeInsets.only(right: 20),
           child: CircleAvatar(
             radius: 19,
-            backgroundColor: Color(0xFFDBEAFE),
-            child: Icon(
-              Icons.person_rounded,
-              color: CareerGuidanceApp.primaryBlue,
-            ),
+            backgroundColor: const Color(0xFFDBEAFE),
+            backgroundImage: _avatarImage(avatarBase64),
+            child: avatarBase64 == null
+                ? const Icon(
+                    Icons.person_rounded,
+                    color: CareerGuidanceApp.primaryBlue,
+                  )
+                : null,
           ),
         ),
       ],
     );
+  }
+}
+
+MemoryImage? _avatarImage(String? avatarBase64) {
+  if (avatarBase64 == null || avatarBase64.isEmpty) return null;
+  try {
+    return MemoryImage(base64Decode(avatarBase64));
+  } on FormatException {
+    return null;
   }
 }
 
@@ -928,6 +974,7 @@ class CareerChatScreen extends StatefulWidget {
     required this.restoreId,
     required this.initialMessages,
     required this.appearance,
+    required this.aiAvatar,
     required this.onMessagesChanged,
   });
 
@@ -937,6 +984,7 @@ class CareerChatScreen extends StatefulWidget {
   final int restoreId;
   final List<CareerMessage> initialMessages;
   final ChatAppearance appearance;
+  final AiAvatarId aiAvatar;
   final ValueChanged<List<CareerMessage>> onMessagesChanged;
 
   @override
@@ -1157,8 +1205,11 @@ class _CareerChatScreenState extends State<CareerChatScreen> {
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
               children: [
                 ..._messages.map(
-                  (message) =>
-                      _ChatBubble(message: message, appearance: appearance),
+                  (message) => _ChatBubble(
+                    message: message,
+                    appearance: appearance,
+                    aiAvatar: widget.aiAvatar,
+                  ),
                 ),
                 if (_isWaiting) _TypingBubble(appearance: appearance),
               ],
@@ -1177,10 +1228,15 @@ class _CareerChatScreenState extends State<CareerChatScreen> {
 }
 
 class _ChatBubble extends StatelessWidget {
-  const _ChatBubble({required this.message, required this.appearance});
+  const _ChatBubble({
+    required this.message,
+    required this.appearance,
+    required this.aiAvatar,
+  });
 
   final CareerMessage message;
   final ChatAppearance appearance;
+  final AiAvatarId aiAvatar;
 
   @override
   Widget build(BuildContext context) {
@@ -1194,30 +1250,47 @@ class _ChatBubble extends StatelessWidget {
         : message.isError
         ? const Color(0xFFBE123C)
         : appearance.botText;
+    final bubble = Container(
+      constraints: const BoxConstraints(maxWidth: 520),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(18),
+          topRight: const Radius.circular(18),
+          bottomLeft: Radius.circular(message.isUser ? 18 : 4),
+          bottomRight: Radius.circular(message.isUser ? 4 : 18),
+        ),
+        border: message.isUser ? null : Border.all(color: appearance.border),
+      ),
+      child: Text(
+        message.text,
+        style: TextStyle(
+          color: textColor,
+          height: 1.45,
+          fontSize: appearance.messageFontSize,
+        ),
+      ),
+    );
+    if (message.isUser) {
+      return Align(alignment: Alignment.centerRight, child: bubble);
+    }
+    final aiStyle = aiAvatarStyle(aiAvatar);
     return Align(
-      alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 560),
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(message.isUser ? 18 : 4),
-            bottomRight: Radius.circular(message.isUser ? 4 : 18),
+      alignment: Alignment.centerLeft,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: aiStyle.backgroundColor,
+            child: Icon(aiStyle.icon, size: 18, color: aiStyle.foregroundColor),
           ),
-          border: message.isUser ? null : Border.all(color: appearance.border),
-        ),
-        child: Text(
-          message.text,
-          style: TextStyle(
-            color: textColor,
-            height: 1.45,
-            fontSize: appearance.messageFontSize,
-          ),
-        ),
+          const SizedBox(width: 8),
+          Flexible(child: bubble),
+        ],
       ),
     );
   }
@@ -1435,10 +1508,93 @@ class ProfileScreen extends StatelessWidget {
     super.key,
     required this.appearance,
     required this.onAppearanceChanged,
+    required this.avatarBase64,
+    required this.onAvatarChanged,
+    required this.aiAvatar,
+    required this.onAiAvatarChanged,
   });
 
   final ChatAppearance appearance;
   final ValueChanged<ChatAppearance> onAppearanceChanged;
+  final String? avatarBase64;
+  final ValueChanged<String?> onAvatarChanged;
+  final AiAvatarId aiAvatar;
+  final ValueChanged<AiAvatarId> onAiAvatarChanged;
+
+  Future<void> _pickAvatar(BuildContext context) async {
+    final s = context.strings;
+    try {
+      final image = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 72,
+      );
+      if (image == null) return;
+      final bytes = await image.readAsBytes();
+      if (bytes.length > 700 * 1024) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              s.t(
+                'Ảnh quá lớn. Hãy chọn ảnh nhỏ hơn 700 KB.',
+                'Image is too large. Choose an image under 700 KB.',
+              ),
+            ),
+          ),
+        );
+        return;
+      }
+      onAvatarChanged(base64Encode(bytes));
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            s.t(
+              'Không thể chọn ảnh. Hãy thử lại.',
+              'Unable to select an image. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _chooseAiAvatar(BuildContext context) async {
+    final s = context.strings;
+    final selected = await showModalBottomSheet<AiAvatarId>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Wrap(
+            spacing: 14,
+            runSpacing: 14,
+            children: AiAvatarId.values
+                .map(
+                  (avatar) => _AiAvatarChoice(
+                    avatar: avatar,
+                    label: _aiAvatarLabel(s, avatar),
+                    selected: avatar == aiAvatar,
+                    onTap: () => Navigator.pop(sheetContext, avatar),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+      ),
+    );
+    if (selected != null) onAiAvatarChanged(selected);
+  }
+
+  String _aiAvatarLabel(AppStrings s, AiAvatarId avatar) => switch (avatar) {
+    AiAvatarId.robot => s.t('Robot', 'Robot'),
+    AiAvatarId.compass => s.t('La bàn', 'Compass'),
+    AiAvatarId.lightbulb => s.t('Bóng đèn', 'Light bulb'),
+    AiAvatarId.school => s.t('Trường học', 'School'),
+  };
 
   Future<void> _signOut(BuildContext context) async {
     final s = context.strings;
@@ -1475,13 +1631,32 @@ class ProfileScreen extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        const CircleAvatar(
-          radius: 38,
-          backgroundColor: Color(0xFFDBEAFE),
-          child: Icon(
-            Icons.person_rounded,
-            size: 42,
-            color: CareerGuidanceApp.primaryBlue,
+        Center(
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              CircleAvatar(
+                radius: 38,
+                backgroundColor: const Color(0xFFDBEAFE),
+                backgroundImage: _avatarImage(avatarBase64),
+                child: avatarBase64 == null
+                    ? const Icon(
+                        Icons.person_rounded,
+                        size: 42,
+                        color: CareerGuidanceApp.primaryBlue,
+                      )
+                    : null,
+              ),
+              Positioned(
+                right: -6,
+                bottom: -6,
+                child: IconButton.filled(
+                  tooltip: s.t('Tải ảnh đại diện', 'Upload profile picture'),
+                  onPressed: () => _pickAvatar(context),
+                  icon: const Icon(Icons.edit_rounded, size: 18),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 14),
@@ -1492,6 +1667,36 @@ class ProfileScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 24),
+        Card(
+          child: ListTile(
+            leading: const Icon(
+              Icons.photo_camera_back_outlined,
+              color: CareerGuidanceApp.primaryBlue,
+            ),
+            title: Text(s.t('Ảnh đại diện', 'Profile picture')),
+            subtitle: Text(
+              avatarBase64 == null
+                  ? s.t(
+                      'Chọn ảnh từ thiết bị',
+                      'Choose an image from your device',
+                    )
+                  : s.t('Đã cập nhật', 'Updated'),
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => _pickAvatar(context),
+          ),
+        ),
+        Card(
+          child: ListTile(
+            leading: _AiAvatarBadge(avatar: aiAvatar, radius: 20),
+            title: Text(s.t('Avatar của AI', 'AI avatar')),
+            subtitle: Text(
+              s.t('Chọn nhân vật trợ lý', 'Choose your assistant character'),
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => _chooseAiAvatar(context),
+          ),
+        ),
         _ProfileItem(
           icon: Icons.school_outlined,
           title: s.t('Lớp học', 'Grade level'),
@@ -1802,6 +2007,65 @@ class _PreviewBubble extends StatelessWidget {
       style: TextStyle(color: textColor, fontSize: appearance.messageFontSize),
     ),
   );
+}
+
+class _AiAvatarBadge extends StatelessWidget {
+  const _AiAvatarBadge({required this.avatar, required this.radius});
+
+  final AiAvatarId avatar;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = aiAvatarStyle(avatar);
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: style.backgroundColor,
+      child: Icon(style.icon, color: style.foregroundColor, size: radius),
+    );
+  }
+}
+
+class _AiAvatarChoice extends StatelessWidget {
+  const _AiAvatarChoice({
+    required this.avatar,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AiAvatarId avatar;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = aiAvatarStyle(avatar);
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Container(
+        width: 112,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? style.foregroundColor : const Color(0xFFE2E8F0),
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _AiAvatarBadge(avatar: avatar, radius: 24),
+            const SizedBox(height: 8),
+            Text(label, textAlign: TextAlign.center),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ProfileItem extends StatelessWidget {
